@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const { serve } = require("@upstash/workflow/express");
 
 import Subscription from "../models/subscription.model.js";
+import { sendReminderEmail } from "../utils/send-email.js";
 
 // กำหนดช่วงเวลาที่ต้องการส่งแจ้งเตือนล่วงหน้า (หน่วยเป็นวัน)
 // ตัวอย่าง: หากวันหมดอายุตรงกับ 22 ก.พ. ระบบจะตั้งคิวแจ้งเตือนวันที่ 15, 17, 20 และ 21 ก.พ.
@@ -34,35 +35,48 @@ export const sendReminders = serve(async (context) => {
     const reminderDate = renewalDate.subtract(daysBefore, "day");
 
     if (reminderDate.isAfter(dayjs())) {
-      // หน่วงเวลาจนถึงวันที่ต้องส่งแจ้งเตือน
-      await sleepUntilReminder(context, `Reminder ${daysBefore} days before renewal`, reminderDate);
+      await sleepUntilReminder(
+        context,
+        `Reminder ${daysBefore} days before`,
+        reminderDate
+      );
     }
 
-    await triggerReminder(context, `Reminder ${daysBefore} days before renewal`);
+    if (dayjs().isSame(reminderDate, "day")) {
+      await triggerReminder(
+        context,
+        `${daysBefore} days before reminder`,
+        subscription
+      );
+    }
   }
 });
 
 // ดึงข้อมูลการสมัครสมาชิก
 const fetchSubscription = async (context, subscriptionId) => {
   // ใช้ context.run เพื่อให้ Upstash จัดการ retry และ logging ให้อัตโนมัติเมื่อ query ล้มเหลว
-  return await context.run("get subscription", () => {
+  return await context.run("get subscription", async () => {
     // ดึงข้อมูลสมาชิกพร้อมแนบข้อมูลผู้ใช้ (ชื่อและอีเมล) เพื่อนำไปแสดงผลในข้อความแจ้งเตือน
     return Subscription.findById(subscriptionId).populate("user", "name email");
   });
 };
 
 // ฟังก์ชันช่วยเหลือสำหรับการหน่วงเวลาจนถึงวันที่ตรงกับเงื่อนไขการแจ้งเตือน
-// เช่น หากต้องการแจ้งเตือนล่วงหน้า 7 วัน และวันหมดอายุคือ 22 ก.พ. แปลว่าเราจะต้องแจ้งเตือนในวันที่ 15 ก.พ. ระบบจึงจะหน่วงเวลาจนถึงวันที่ 15 ก.พ. ก่อนส่งแจ้งเตือน 
+// เช่น หากต้องการแจ้งเตือนล่วงหน้า 7 วัน และวันหมดอายุคือ 22 ก.พ. แปลว่าเราจะต้องแจ้งเตือนในวันที่ 15 ก.พ. ระบบจึงจะหน่วงเวลาจนถึงวันที่ 15 ก.พ. ก่อนส่งแจ้งเตือน
 const sleepUntilReminder = async (context, label, date) => {
-  console.log(`Sleeping until ${date.format("YYYY-MM-DD")} (${label})`);
+  console.log(`Sleeping until ${label} reminder at ${date}`);
   await context.sleepUntil(label, date.toDate());
-}
+};
 
 // ฟังก์ชันช่วยเหลือสำหรับการส่งอีเมลแจ้งเตือนสมาชิก
-const triggerReminder = async (context, label) => {
-  return await context.run(label, () => {
-    console.log(`Triggering reminder: ${label}`);
-    // ส่งอีเมลแจ้งเตือนสมาชิกที่นี่ (ใช้บริการอีเมลที่ต้องการ)
+const triggerReminder = async (context, label, subscription) => {
+  return await context.run(label, async () => {
+    console.log(`Triggering ${label}`);
 
-  })
-}
+    await sendReminderEmail({
+      to: subscription.user.email,
+      type: label,
+      subscription,
+    });
+  });
+};

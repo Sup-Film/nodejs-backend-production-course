@@ -4,14 +4,14 @@ const subscriptionSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, "Subscription Name is required"],
+      required: [true, "Subscription name is required"],
       trim: true,
       minLength: 2,
       maxLength: 100,
     },
     price: {
       type: Number,
-      required: [true, "Subscription Price is required"],
+      required: [true, "Subscription price is required"],
       min: [0, "Price must be greater than 0"],
     },
     currency: {
@@ -26,7 +26,7 @@ const subscriptionSchema = new mongoose.Schema(
     category: {
       type: String,
       enum: [
-        "sport",
+        "sports",
         "news",
         "entertainment",
         "lifestyle",
@@ -61,10 +61,9 @@ const subscriptionSchema = new mongoose.Schema(
         validator: function (value) {
           return value > this.startDate;
         },
-        message: "Renewal date must be after start date",
+        message: "Renewal date must be after the start date",
       },
     },
-    // Reference ไปยัง User model
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -76,7 +75,6 @@ const subscriptionSchema = new mongoose.Schema(
 );
 
 // Auto-calculate renewal date if missing.
-// subscription ที่ยังไม่ได้ตั้ง renewalDate จะถูกกำหนดอัตโนมัติให้เป็นวันถัดไปตามรอบที่กำหนดก่อนบันทึกลงฐานข้อมูล.
 subscriptionSchema.pre("save", function (next) {
   if (!this.renewalDate) {
     const renewalPeriods = {
@@ -86,7 +84,6 @@ subscriptionSchema.pre("save", function (next) {
       yearly: 365,
     };
 
-    // Example: เริ่มต้น 1 Jan, frequency monthly -> renewalDate = 31 Jan
     this.renewalDate = new Date(this.startDate);
     this.renewalDate.setDate(
       this.renewalDate.getDate() + renewalPeriods[this.frequency]
